@@ -8,6 +8,7 @@ class ChatRequest(BaseModel):
     session_id: str = "default"
     message: str
     use_rag: bool = True
+    preference: Optional[str] = None
 
 
 # ========== Knowledge ==========

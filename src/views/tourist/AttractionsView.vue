@@ -23,7 +23,7 @@
         <span class="route-count">{{ routes.length }} 条</span>
       </div>
       <div class="routes-grid">
-        <div v-for="route in routes" :key="route.id" class="route-card card" @click="selectRoute(route)">
+        <div v-for="route in routes" :key="route.id" class="route-card card" :class="{ highlighted: isRouteMatchingPreference(route) }" @click="selectRoute(route)">
           <div class="route-badge" :style="{ background: route.color }">{{ route.duration }}</div>
           <h3 class="route-name">{{ route.name }}</h3>
           <p class="route-desc">{{ route.description }}</p>
@@ -88,7 +88,24 @@ const selectedRoute = ref(null)
 const spotDescriptions = ref({})
 const loading = ref(false)
 
+function getUserId() {
+  try {
+    const userUserStr = sessionStorage.getItem('user_user')
+    const userUser = userUserStr ? JSON.parse(userUserStr) : null
+    return userUser ? userUser.id : 'anonymous'
+  } catch (e) {
+    return 'anonymous'
+  }
+}
+
+function getPreferenceStorageKey() {
+  return `visitor_preference_${getUserId()}`
+}
+
+const activePreference = ref('')
+
 onMounted(async () => {
+  activePreference.value = localStorage.getItem(getPreferenceStorageKey()) || ''
   try {
     const [tagRes, attrRes, routeRes] = await Promise.all([
       api.listTags(), api.listAttractions(), api.listRoutes(),
@@ -96,15 +113,28 @@ onMounted(async () => {
     if (tagRes.code === 200) tags.value = tagRes.data
     if (attrRes.code === 200) attractions.value = attrRes.data
     if (routeRes.code === 200) routes.value = routeRes.data
+    
+    // 初始化同步偏好标签
+    if (activePreference.value) {
+      selectedTags.value = [activePreference.value]
+      await recommendRoutes()
+    }
   } catch (e) {
     console.warn('Failed to load attractions data:', e)
   }
 })
 
 function toggleTag(key) {
-  const idx = selectedTags.value.indexOf(key)
-  if (idx > -1) selectedTags.value.splice(idx, 1)
-  else selectedTags.value.push(key)
+  if (activePreference.value === key) {
+    activePreference.value = ''
+    selectedTags.value = []
+    localStorage.removeItem(getPreferenceStorageKey())
+  } else {
+    activePreference.value = key
+    selectedTags.value = [key]
+    localStorage.setItem(getPreferenceStorageKey(), key)
+  }
+  recommendRoutes()
 }
 
 async function selectRoute(route) {
@@ -120,7 +150,13 @@ async function selectRoute(route) {
 }
 
 async function recommendRoutes() {
-  if (!selectedTags.value.length) return
+  if (!selectedTags.value.length) {
+    try {
+      const res = await api.listRoutes()
+      if (res.code === 200) routes.value = res.data
+    } catch (_) {}
+    return
+  }
   loading.value = true
   try {
     const res = await api.recommendRoutes(selectedTags.value)
@@ -130,6 +166,19 @@ async function recommendRoutes() {
   } finally {
     loading.value = false
   }
+}
+
+function isRouteMatchingPreference(route) {
+  if (!activePreference.value) return false
+  // 历史人文 (history) -> 路线 1
+  // 自然风光 (nature) -> 路线 2
+  // 休闲亲子 (family) -> 路线 3
+  // 打卡拍照 (photo) -> 路线 1, 2
+  if (activePreference.value === 'history' && route.id === 1) return true
+  if (activePreference.value === 'nature' && route.id === 2) return true
+  if (activePreference.value === 'family' && route.id === 3) return true
+  if (activePreference.value === 'photo' && (route.id === 1 || route.id === 2)) return true
+  return false
 }
 </script>
 
@@ -146,8 +195,28 @@ async function recommendRoutes() {
 .section-header h2 { font-size: 18px; }
 .route-count, .attraction-count { color: var(--text-secondary); font-size: 14px; }
 .routes-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
-.route-card { cursor: pointer; transition: all 0.2s; }
+.route-card { cursor: pointer; transition: all 0.25s ease; border: 1px solid var(--border); }
 .route-card:hover { box-shadow: var(--shadow-lg); transform: translateY(-2px); }
+.route-card.highlighted {
+  border: 2px solid var(--primary);
+  box-shadow: 0 10px 25px rgba(99, 102, 241, 0.15), 0 0 12px rgba(99, 102, 241, 0.08);
+  position: relative;
+  overflow: hidden;
+}
+.route-card.highlighted::before {
+  content: '✨ 偏好首选';
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background: linear-gradient(135deg, #6366F1, #8B5CF6);
+  color: white;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 20px;
+  box-shadow: 0 2px 6px rgba(99, 102, 241, 0.3);
+  z-index: 2;
+}
 .route-badge { display: inline-block; padding: 3px 12px; border-radius: 12px; color: white; font-size: 12px; font-weight: 600; margin-bottom: 8px; }
 .route-name { font-size: 17px; margin-bottom: 6px; }
 .route-desc { font-size: 13px; color: var(--text-secondary); margin-bottom: 10px; }

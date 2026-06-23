@@ -12,7 +12,7 @@
         <div class="preview-panel card">
           <h3>实时预览</h3>
           <div class="preview-container">
-            <DigitalHumanAvatar :state="previewState" :emotion="'happy'" :name="config.name" :title="config.title" :outfitColor="currentOutfit" />
+            <DigitalHumanAvatar :state="previewState" :emotion="'happy'" :name="config.name" :title="config.title" :outfitColor="currentOutfit" :characterId="config.character_id" />
           </div>
           <div class="preview-controls">
             <button v-for="s in states" :key="s.key" class="preview-btn" :class="{ active: previewState === s.key }" @click="previewState = s.key">{{ s.label }}</button>
@@ -77,6 +77,29 @@
         </div>
       </div>
     </template>
+
+    <!-- Confirm Modal -->
+    <div v-if="showConfirmModal" class="modal-overlay" @click.self="showConfirmModal = false">
+      <div class="confirm-modal card">
+        <div class="modal-header">
+          <span class="modal-icon">⚠️</span>
+          <h3>确认保存配置</h3>
+        </div>
+        <div class="modal-body">
+          <p>您确定要保存当前的数字人配置吗？保存后，游客端的数字人外观、声音及语速将同步更新。</p>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-outline" @click="showConfirmModal = false">取消</button>
+          <button class="btn btn-primary" :disabled="saving" @click="confirmSave">确认保存</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Toast message for success/failure -->
+    <div v-if="toast" class="toast-message" :class="toast.type">
+      <span class="toast-icon">{{ toast.type === 'success' ? '✅' : '❌' }}</span>
+      <span class="toast-text">{{ toast.text }}</span>
+    </div>
   </div>
 </template>
 
@@ -97,6 +120,17 @@ const config = reactive({ name: '小导', title: '智能导游', character_id: '
 
 const states = [{ key: 'idle', label: '待机' }, { key: 'listening', label: '聆听' }, { key: 'thinking', label: '思考' }, { key: 'speaking', label: '讲解' }]
 
+const showConfirmModal = ref(false)
+const saving = ref(false)
+const toast = ref(null)
+
+function showToast(text, type = 'success') {
+  toast.value = { text, type }
+  setTimeout(() => {
+    toast.value = null
+  }, 3000)
+}
+
 onMounted(async () => {
   try {
     const [charRes, voiceRes, outfitRes] = await Promise.all([api.getCharacters(), api.getVoices(), api.getOutfits()])
@@ -104,7 +138,7 @@ onMounted(async () => {
     if (voiceRes.code === 200) voices.value = voiceRes.data
     if (outfitRes.code === 200) { outfits.value = outfitRes.data; if (outfitRes.data.length) { selectedOutfit.value = outfitRes.data[0].id; currentOutfit.value = outfitRes.data[0].color } }
     const cfgRes = await api.getConfig()
-    if (cfgRes.code === 200) {
+    if (cfgRes.code === 200 && cfgRes.data) {
       Object.assign(config, {
         name: cfgRes.data.name || '小导',
         title: cfgRes.data.title || '智能导游',
@@ -112,6 +146,13 @@ onMounted(async () => {
         voice_id: cfgRes.data.voice || 'zh-CN-XiaoxiaoNeural',
         speed: cfgRes.data.speed || 1.0,
       })
+      if (cfgRes.data.outfit && outfits.value.length) {
+        const matched = outfits.value.find(o => o.id === cfgRes.data.outfit)
+        if (matched) {
+          selectedOutfit.value = matched.id
+          currentOutfit.value = matched.color
+        }
+      }
     }
   } catch (e) {
     console.warn('Failed to load config:', e)
@@ -125,12 +166,31 @@ function selectOutfit(outfit) {
   currentOutfit.value = outfit.color
 }
 
-async function saveConfig() {
+function saveConfig() {
+  showConfirmModal.value = true
+}
+
+async function confirmSave() {
+  saving.value = true
   try {
-    const res = await api.updateConfig({ name: config.name, title: config.title, character_id: config.character_id, voice_id: config.voice_id, outfit_id: selectedOutfit.value, speed: config.speed })
-    if (res.code === 200) alert('配置已保存！')
+    const res = await api.updateConfig({
+      name: config.name,
+      title: config.title,
+      character_id: config.character_id,
+      voice_id: config.voice_id,
+      outfit_id: selectedOutfit.value,
+      speed: config.speed
+    })
+    if (res.code === 200) {
+      showToast('配置已成功保存！', 'success')
+      showConfirmModal.value = false
+    } else {
+      showToast('保存失败：' + (res.message || '未知错误'), 'error')
+    }
   } catch (e) {
-    alert('保存失败')
+    showToast('保存失败，请检查网络连接', 'error')
+  } finally {
+    saving.value = false
   }
 }
 </script>
@@ -178,4 +238,119 @@ async function saveConfig() {
 .name-control { display: flex; flex-direction: column; gap: 8px; }
 .name-control label { font-size: 13px; font-weight: 500; }
 .save-btn { width: 100%; padding: 14px; font-size: 16px; }
+
+/* 模态框与 Toast 样式 */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(15, 23, 42, 0.4);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: fadeIn 0.25s ease-out;
+}
+
+.confirm-modal {
+  width: 420px;
+  background: white;
+  border-radius: 16px;
+  padding: 24px;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  animation: scaleIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  border: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.modal-icon {
+  font-size: 24px;
+}
+
+.modal-header h3 {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0;
+}
+
+.modal-body {
+  font-size: 14px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin-bottom: 24px;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.modal-footer .btn {
+  padding: 10px 20px;
+  font-size: 14px;
+  border-radius: 8px;
+  font-weight: 500;
+}
+
+/* Toast 提示 */
+.toast-message {
+  position: fixed;
+  top: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 24px;
+  border-radius: 12px;
+  background: white;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  z-index: 1100;
+  animation: slideDown 0.3s ease-out;
+}
+
+.toast-message.success {
+  border-left: 4px solid #10B981;
+}
+
+.toast-message.error {
+  border-left: 4px solid #EF4444;
+}
+
+.toast-icon {
+  font-size: 18px;
+}
+
+.toast-text {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes scaleIn {
+  from { transform: scale(0.95); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+@keyframes slideDown {
+  from { transform: translate(-50%, -20px); opacity: 0; }
+  to { transform: translate(-50%, 0); opacity: 1; }
+}
 </style>

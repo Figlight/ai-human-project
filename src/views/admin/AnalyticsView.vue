@@ -77,7 +77,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, watch } from 'vue'
+import { ref, reactive, onMounted, watch, nextTick } from 'vue'
 import { api } from '../../api.js'
 
 const dateRange = ref('7d')
@@ -92,6 +92,7 @@ onMounted(() => loadData())
 
 async function loadData() {
   loading.value = true
+  let trendData = []
   try {
     const days = parseInt(dateRange.value)
     const [sumRes, trendRes, kwRes, sugRes, samRes] = await Promise.all([
@@ -105,11 +106,13 @@ async function loadData() {
     if (kwRes.code === 200) keywords.value = kwRes.data
     if (sugRes.code === 200) suggestions.value = sugRes.data
     if (samRes.code === 200) samples.value = samRes.data
-    if (trendRes.code === 200) drawChart(trendRes.data)
+    if (trendRes.code === 200) trendData = trendRes.data
   } catch (e) {
     console.warn('Analytics load failed:', e)
   } finally {
     loading.value = false
+    await nextTick()
+    drawChart(trendData)
   }
 }
 

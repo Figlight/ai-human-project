@@ -18,7 +18,7 @@
         <div class="rec-bar" v-for="i in 5" :key="i"></div>
       </div>
     </div>
-    <span class="voice-label">{{ isRecording ? '松手发送' : '按住说话' }}</span>
+    <span class="voice-label">{{ isRecording ? '松手识别' : '按住说话' }}</span>
   </button>
 </template>
 

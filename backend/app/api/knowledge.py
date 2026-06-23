@@ -7,6 +7,8 @@ from backend.app.models.schemas import (
 from backend.app.services.knowledge_service import knowledge_service
 from backend.app.services.rag_service import rag_service
 from backend.config import settings
+from backend.app.api.auth import get_current_admin
+from backend.app.db.models import User
 
 router = APIRouter()
 
@@ -24,13 +26,13 @@ async def list_qa(
 
 
 @router.post("/qa", response_model=ApiResponse)
-async def create_qa(data: QAItemCreate, db: AsyncSession = Depends(get_db)):
+async def create_qa(data: QAItemCreate, db: AsyncSession = Depends(get_db), current_admin: User = Depends(get_current_admin)):
     item = await knowledge_service.create_qa(db, data.question, data.answer, data.category)
     return ApiResponse(data=QAItemResponse.model_validate(item))
 
 
 @router.put("/qa/{qa_id}", response_model=ApiResponse)
-async def update_qa(qa_id: int, data: QAItemUpdate, db: AsyncSession = Depends(get_db)):
+async def update_qa(qa_id: int, data: QAItemUpdate, db: AsyncSession = Depends(get_db), current_admin: User = Depends(get_current_admin)):
     item = await knowledge_service.update_qa(db, qa_id, data.model_dump(exclude_none=True))
     if not item:
         return ApiResponse(code=404, message="条目不存在")
@@ -38,7 +40,7 @@ async def update_qa(qa_id: int, data: QAItemUpdate, db: AsyncSession = Depends(g
 
 
 @router.delete("/qa/{qa_id}", response_model=ApiResponse)
-async def delete_qa(qa_id: int, db: AsyncSession = Depends(get_db)):
+async def delete_qa(qa_id: int, db: AsyncSession = Depends(get_db), current_admin: User = Depends(get_current_admin)):
     success = await knowledge_service.delete_qa(db, qa_id)
     if not success:
         return ApiResponse(code=404, message="条目不存在")
@@ -46,7 +48,7 @@ async def delete_qa(qa_id: int, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/upload", response_model=ApiResponse)
-async def upload_document(file: UploadFile = File(...), db: AsyncSession = Depends(get_db)):
+async def upload_document(file: UploadFile = File(...), db: AsyncSession = Depends(get_db), current_admin: User = Depends(get_current_admin)):
     file_path = settings.KNOWLEDGE_DIR / file.filename
     content = await file.read()
     file_path.write_bytes(content)
@@ -76,7 +78,7 @@ async def list_documents(db: AsyncSession = Depends(get_db)):
 
 
 @router.delete("/documents/{doc_id}", response_model=ApiResponse)
-async def delete_document(doc_id: int, db: AsyncSession = Depends(get_db)):
+async def delete_document(doc_id: int, db: AsyncSession = Depends(get_db), current_admin: User = Depends(get_current_admin)):
     success = await knowledge_service.delete_document(db, doc_id)
     if not success:
         return ApiResponse(code=404, message="文档不存在")
@@ -84,6 +86,6 @@ async def delete_document(doc_id: int, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/rebuild", response_model=ApiResponse)
-async def rebuild_index():
+async def rebuild_index(current_admin: User = Depends(get_current_admin)):
     await rag_service.rebuild_index()
     return ApiResponse(message="索引重建完成")

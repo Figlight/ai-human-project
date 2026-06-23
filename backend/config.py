@@ -45,6 +45,10 @@ class Settings(BaseSettings):
     # Amap (高德地图)
     AMAP_KEY: str = "ef1f20cf0b87fbd95fb9c4868aa3433f"
 
+    # JWT Auth
+    JWT_SECRET_KEY: str = "景区导览AI数字人-默认JWT签名密钥-2026"
+    JWT_EXPIRATION: int = 1800  # 单位：秒 (30分钟)
+
     # Vector store
     EMBEDDING_MODEL: str = "BAAI/bge-base-zh-v1.5"
     CHUNK_SIZE: int = 500

@@ -249,7 +249,7 @@ async def import_attraction_details():
             chunksize=50
         )
         
-        print(f"✅ 景点详情数据导入完成！共 {len(attractions)} 条记录")
+        print(f"✅ 景点详情数据导入完成！共 {len(df)} 条记录")
         return True
         
     except Exception as e:

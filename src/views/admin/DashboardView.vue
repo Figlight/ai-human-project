@@ -48,7 +48,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import { api } from '../../api.js'
 
 const currentTime = ref('')
@@ -74,21 +74,21 @@ onMounted(async () => {
     if (res.code === 200) {
       stats.value[0].value = res.data.total_visitors.toLocaleString()
       stats.value[1].value = res.data.total_conversations.toLocaleString()
-      stats.value[2].value = res.data.avg_score.toFixed(1)
+      stats.value[2].value = Number(res.data.avg_score).toFixed(1)
       stats.value[2].change = 3.1
     }
     const trendRes = await api.getEmotionTrend(7)
     if (trendRes.code === 200) {
       emotionTrend.value = trendRes.data
-      drawChart(trendRes.data)
     }
     const qRes = await api.getTopQuestions()
     if (qRes.code === 200) topQuestions.value = qRes.data
   } catch (e) {
     console.warn('Dashboard load failed:', e)
-    drawChart([])
   } finally {
     loading.value = false
+    await nextTick()
+    drawChart(emotionTrend.value)
   }
 })
 
@@ -164,7 +164,7 @@ function drawChart(data) {
 .stat-change.down { color: #EF4444; background: #FEE2E2; }
 .stat-value { font-size: 32px; font-weight: 700; margin-bottom: 4px; }
 .stat-label { font-size: 14px; color: var(--text-secondary); }
-.charts-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.charts-row { display: flex; flex-direction: column; gap: 16px; }
 .chart-card { background: white; border-radius: var(--radius); box-shadow: var(--shadow); }
 .chart-header { padding: 16px 20px; border-bottom: 1px solid var(--border); }
 .chart-header h3 { font-size: 16px; }

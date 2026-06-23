@@ -22,3 +22,13 @@ async def init_db():
     async with engine.begin() as conn:
         from backend.app.db import models
         await conn.run_sync(Base.metadata.create_all)
+        
+        from sqlalchemy import text
+        try:
+            await conn.execute(text("ALTER TABLE conversations ADD COLUMN user_id INT NULL"))
+        except Exception:
+            pass
+        try:
+            await conn.execute(text("ALTER TABLE conversations ADD CONSTRAINT fk_conversations_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL"))
+        except Exception:
+            pass

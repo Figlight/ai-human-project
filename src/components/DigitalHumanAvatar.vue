@@ -15,7 +15,29 @@
       </div>
 
       <!-- Head -->
-      <div class="head">
+      <div class="head" :class="characterId">
+        <!-- Elf Ears (for guide3) -->
+        <template v-if="characterId === 'guide3'">
+          <div class="elf-ear left"></div>
+          <div class="elf-ear right"></div>
+        </template>
+
+        <!-- Scholar Hat (for guide4) -->
+        <template v-if="characterId === 'guide4'">
+          <div class="scholar-hat">
+            <div class="hat-body"></div>
+            <div class="hat-ribbon left"></div>
+            <div class="hat-ribbon right"></div>
+          </div>
+        </template>
+
+        <!-- Ancient Hair Bun (for guide1) -->
+        <template v-if="characterId === 'guide1'">
+          <div class="hair-bun">
+            <div class="hair-stick"></div>
+          </div>
+        </template>
+
         <!-- Hair -->
         <div class="hair">
           <div class="hair-bangs left"></div>
@@ -25,6 +47,15 @@
 
         <!-- Face -->
         <div class="face">
+          <!-- Glasses (for guide2) -->
+          <template v-if="characterId === 'guide2'">
+            <div class="modern-glasses">
+              <div class="lens left"></div>
+              <div class="bridge"></div>
+              <div class="lens right"></div>
+            </div>
+          </template>
+
           <!-- Eyebrows -->
           <div class="eyebrows">
             <div class="eyebrow left" :class="{ raised: state === 'listening' || state === 'thinking', lowered: state === 'speaking' && emotion === 'sad' }"></div>
@@ -79,6 +110,7 @@ const props = defineProps({
   name: { type: String, default: '小导' },
   title: { type: String, default: 'AI导游' },
   outfitColor: { type: String, default: 'linear-gradient(135deg, #4F6CF7, #8B5CF6)' },
+  characterId: { type: String, default: 'guide1' },
   volume: { type: Number, default: 0 }
 })
 
@@ -241,7 +273,7 @@ const mouthStyle = computed(() => {
 .hair-top {
   width: 100%;
   height: 100%;
-  background: #4A3728;
+  background: var(--hair-color, #4A3728);
   border-radius: 65px 65px 20px 20px;
 }
 .hair-bangs {
@@ -249,7 +281,7 @@ const mouthStyle = computed(() => {
   top: 10px;
   width: 45%;
   height: 40px;
-  background: #4A3728;
+  background: var(--hair-color, #4A3728);
   border-radius: 0 0 50% 50%;
 }
 .hair-bangs.left { left: 5px; }
@@ -262,7 +294,7 @@ const mouthStyle = computed(() => {
   left: 0;
   width: 100%;
   height: 135px;
-  background: #FFD5C2;
+  background: var(--face-color, #FFD5C2);
   border-radius: 50% 50% 45% 45%;
   display: flex;
   flex-direction: column;
@@ -278,7 +310,7 @@ const mouthStyle = computed(() => {
 .eyebrow {
   width: 24px;
   height: 4px;
-  background: #4A3728;
+  background: var(--hair-color, #4A3728);
   border-radius: 2px;
   transition: all 0.3s;
 }
@@ -322,7 +354,7 @@ const mouthStyle = computed(() => {
   left: 0;
   width: 100%;
   height: 100%;
-  background: #FFD5C2;
+  background: var(--face-color, #FFD5C2);
   transform: translateY(-100%);
   transition: transform 0.2s;
 }
@@ -433,5 +465,159 @@ const mouthStyle = computed(() => {
 .avatar-title {
   font-size: 13px;
   color: var(--text-secondary);
+}
+
+/* 针对不同角色的变量定义 */
+.head.guide1 {
+  --hair-color: #B45309; /* 橘褐色头发 */
+  --face-color: #FFF1F2; /* 白皙偏红润 */
+}
+
+.head.guide2 {
+  --hair-color: #1E293B; /* 深色头发 */
+  --face-color: #FDF4FF; /* 现代肤色 */
+}
+
+.head.guide3 {
+  --hair-color: #06B6D4; /* 卡通蓝发 */
+  --face-color: #ECFDF5; /* 卡通偏亮肤色 */
+}
+
+.head.guide4 {
+  --hair-color: #1F2937; /* 黑色头发 */
+  --face-color: #FEF3C7; /* 偏古风书生肤色 */
+}
+
+/* 装饰性元素样式 */
+
+/* 1. 古风导游的发髻和簪子 */
+.hair-bun {
+  position: absolute;
+  top: -20px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 48px;
+  height: 48px;
+  background: var(--hair-color, #4A3728);
+  border-radius: 50%;
+  z-index: 3;
+}
+.hair-stick {
+  position: absolute;
+  top: 20px;
+  left: -12px;
+  width: 72px;
+  height: 5px;
+  background: #D97706; /* 木簪 */
+  border-radius: 3px;
+  transform: rotate(-15deg);
+  z-index: -1;
+}
+.hair-stick::after {
+  content: '';
+  position: absolute;
+  right: 4px;
+  top: -3px;
+  width: 10px;
+  height: 10px;
+  background: #EF4444; /* 红珠装饰 */
+  border-radius: 50%;
+}
+
+/* 2. 现代导游的眼镜 */
+.modern-glasses {
+  position: absolute;
+  top: 45px;
+  left: 12px;
+  right: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  z-index: 10;
+  pointer-events: none;
+}
+.modern-glasses .lens {
+  width: 38px;
+  height: 24px;
+  border: 2px solid #F59E0B; /* 金丝眼镜 */
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.25);
+  box-shadow: 0 0 4px rgba(245, 158, 11, 0.3);
+}
+.modern-glasses .bridge {
+  flex: 1;
+  height: 2px;
+  background: #F59E0B;
+}
+
+/* 3. 卡通精灵耳 */
+.elf-ear {
+  position: absolute;
+  top: 60px;
+  width: 25px;
+  height: 18px;
+  background: var(--face-color);
+  z-index: 1;
+  transition: all 0.3s;
+}
+.elf-ear.left {
+  left: -15px;
+  border-radius: 100% 0 0 100%;
+  transform: rotate(-25deg) skewX(-15deg);
+  border-left: 2px solid rgba(0, 0, 0, 0.06);
+}
+.elf-ear.right {
+  right: -15px;
+  border-radius: 0 100% 100% 0;
+  transform: rotate(25deg) skewX(15deg);
+  border-right: 2px solid rgba(0, 0, 0, 0.06);
+}
+
+/* 4. 书生帽 */
+.scholar-hat {
+  position: absolute;
+  top: -30px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 76px;
+  height: 40px;
+  z-index: 5;
+}
+.hat-body {
+  width: 100%;
+  height: 100%;
+  background: #334155; /* 深灰方巾帽 */
+  border-radius: 10px 10px 0 0;
+  border-bottom: 4px solid #1E293B;
+  position: relative;
+}
+.hat-body::after {
+  content: '';
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 14px;
+  height: 14px;
+  background: #10B981; /* 嵌玉 */
+  border-radius: 2px;
+}
+.hat-ribbon {
+  position: absolute;
+  bottom: 2px;
+  width: 6px;
+  height: 30px;
+  background: #334155;
+  border-radius: 2px;
+  z-index: -1;
+  transform-origin: top center;
+}
+.hat-ribbon.left {
+  left: 3px;
+  transform: rotate(12deg);
+}
+.hat-ribbon.right {
+  right: 3px;
+  transform: rotate(-12deg);
 }
 </style>

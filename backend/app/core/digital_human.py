@@ -24,7 +24,14 @@ class DigitalHumanEngine:
                 db.add(cfg)
                 await db.commit()
                 await db.refresh(cfg)
-            self._cached_config = cfg
+            self._cached_config = {
+                "name": cfg.name,
+                "title": cfg.title,
+                "character": cfg.character,
+                "voice": cfg.voice,
+                "outfit": cfg.outfit,
+                "speed": cfg.speed,
+            }
 
     async def _get_config_row(self):
         if self._cached_config is None:
@@ -34,14 +41,7 @@ class DigitalHumanEngine:
     @property
     def config(self) -> dict:
         if self._cached_config:
-            return {
-                "name": self._cached_config.name,
-                "title": self._cached_config.title,
-                "character": self._cached_config.character,
-                "voice": self._cached_config.voice,
-                "outfit": self._cached_config.outfit,
-                "speed": self._cached_config.speed,
-            }
+            return self._cached_config
         return {
             "name": "小导",
             "title": "智能导游",
@@ -70,7 +70,14 @@ class DigitalHumanEngine:
             for k, v in config.items():
                 setattr(row, k, v)
             await db.commit()
-            self._cached_config = row
+            self._cached_config = {
+                "name": row.name,
+                "title": row.title,
+                "character": row.character,
+                "voice": row.voice,
+                "outfit": row.outfit,
+                "speed": row.speed,
+            }
         return self.config
 
     async def get_config(self) -> dict:

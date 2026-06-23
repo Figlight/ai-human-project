@@ -17,12 +17,11 @@
           <router-link to="/conversations" class="nav-item" active-class="active">
             <span>📋</span> 历史记录
           </router-link>
+          <button class="nav-item pref-nav-btn" @click="triggerPreferenceModal">
+            <span>✨</span> 讲解偏好
+          </button>
         </nav>
-        <div class="header-right">
-          <router-link to="/admin" class="btn btn-outline" style="font-size:13px;padding:6px 16px;">
-            ⚙️ 管理后台
-          </router-link>
-        </div>
+        <div class="header-right"></div>
       </div>
     </header>
 
@@ -34,6 +33,9 @@
       </main>
     </template>
 
+    <!-- Auth Layout -->
+    <router-view v-else-if="layout === 'auth'" />
+
     <!-- Tourist Main -->
     <main v-if="layout === 'tourist'" class="tourist-main">
       <router-view />
@@ -43,11 +45,24 @@
 
 <script setup>
 import { computed } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import AdminSidebar from './components/AdminSidebar.vue'
 
 const route = useRoute()
+const router = useRouter()
 const layout = computed(() => route.meta?.layout || 'tourist')
+
+function triggerPreferenceModal() {
+  if (router.currentRoute.value.path !== '/chat') {
+    router.push('/chat').then(() => {
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('open-preference-modal'))
+      }, 100)
+    })
+  } else {
+    window.dispatchEvent(new CustomEvent('open-preference-modal'))
+  }
+}
 </script>
 
 <style scoped>
@@ -107,6 +122,15 @@ const layout = computed(() => route.meta?.layout || 'tourist')
 .nav-item.active {
   background: #EEF2FF;
   color: var(--primary);
+}
+.pref-nav-btn {
+  background: none;
+  border: none;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  outline: none;
 }
 .tourist-main {
   max-width: 1200px;

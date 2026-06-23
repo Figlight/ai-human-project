@@ -1,6 +1,8 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from backend.app.models.schemas import ApiResponse, DigitalHumanConfig, CharacterInfo, VoiceInfo, OutfitInfo
 from backend.app.core.digital_human import digital_human_engine
+from backend.app.api.auth import get_current_admin
+from backend.app.db.models import User
 
 router = APIRouter()
 
@@ -36,7 +38,7 @@ async def get_config():
 
 
 @router.put("/config", response_model=ApiResponse)
-async def update_config(config: DigitalHumanConfig):
+async def update_config(config: DigitalHumanConfig, current_admin: User = Depends(get_current_admin)):
     updated = await digital_human_engine.update_config({
         "name": config.name,
         "title": config.title,

@@ -1,19 +1,40 @@
 from sqlalchemy import Column, Integer, String, Text, DateTime, Float, Boolean, JSON, ForeignKey
 from sqlalchemy.orm import relationship
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from backend.app.db.database import Base
+
+beijing_tz = timezone(timedelta(hours=8))
+
+
+def get_beijing_now():
+    return datetime.now(beijing_tz).replace(tzinfo=None)
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    username = Column(String(64), unique=True, index=True, nullable=False)
+    password_hash = Column(String(128), nullable=False)
+    salt = Column(String(64), nullable=False)
+    role = Column(String(16), default="user")  # 'user' or 'admin'
+    token = Column(String(128), index=True, nullable=True)
+    created_at = Column(DateTime, default=get_beijing_now)
 
 
 class Conversation(Base):
     __tablename__ = "conversations"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     session_id = Column(String(64), index=True, nullable=False)
     role = Column(String(16), nullable=False)
     content = Column(Text, nullable=False)
     emotion = Column(String(16), default="neutral")
     audio_path = Column(String(256))
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=get_beijing_now)
+
+    user = relationship("User", backref="conversations")
 
 
 class QAItem(Base):
@@ -23,8 +44,8 @@ class QAItem(Base):
     question = Column(String(500), nullable=False)
     answer = Column(Text, nullable=False)
     category = Column(String(64), default="景区概况")
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=get_beijing_now)
+    updated_at = Column(DateTime, default=get_beijing_now, onupdate=get_beijing_now)
 
 
 class Document(Base):
@@ -37,7 +58,7 @@ class Document(Base):
     pages = Column(Integer, default=0)
     chunks = Column(Integer, default=0)
     status = Column(String(32), default="indexing")
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=get_beijing_now)
 
 
 class VisitorFeedback(Base):
@@ -49,7 +70,7 @@ class VisitorFeedback(Base):
     emotion = Column(String(16))
     keywords = Column(JSON)
     suggestion = Column(Text)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=get_beijing_now)
 
 
 class DHConfig(Base):

@@ -6,6 +6,18 @@ const routes = [
     redirect: '/chat'
   },
   {
+    path: '/login',
+    name: 'Login',
+    component: () => import('../views/tourist/LoginView.vue'),
+    meta: { title: '账号登录', layout: 'auth' }
+  },
+  {
+    path: '/register',
+    name: 'AdminRegister',
+    component: () => import('../views/tourist/AdminRegisterView.vue'),
+    meta: { title: '管理员注册', layout: 'auth' }
+  },
+  {
     path: '/chat',
     name: 'Chat',
     component: () => import('../views/tourist/ChatView.vue'),
@@ -58,6 +70,39 @@ const routes = [
 const router = createRouter({
   history: createWebHistory(),
   routes
+})
+
+router.beforeEach((to, from, next) => {
+  const adminToken = sessionStorage.getItem('admin_token')
+  const adminUserStr = sessionStorage.getItem('admin_user')
+  const adminUser = adminUserStr ? JSON.parse(adminUserStr) : null
+
+  const userToken = sessionStorage.getItem('user_token')
+  const userUserStr = sessionStorage.getItem('user_user')
+  const userUser = userUserStr ? JSON.parse(userUserStr) : null
+
+  // Bypass login and admin register pages
+  if (to.name === 'Login' || to.name === 'AdminRegister') {
+    return next()
+  }
+
+  // Admin routes: require admin_token & admin user role
+  if (to.path.startsWith('/admin')) {
+    if (!adminToken || !adminUser || adminUser.role !== 'admin') {
+      return next('/login')
+    }
+    return next()
+  }
+
+  // User/Tourist routes: require user_token
+  if (to.path === '/chat' || to.path === '/attractions' || to.path === '/conversations') {
+    if (!userToken || !userUser) {
+      return next('/login')
+    }
+    return next()
+  }
+
+  next()
 })
 
 export default router

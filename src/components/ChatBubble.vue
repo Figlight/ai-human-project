@@ -10,7 +10,7 @@
       </div>
       <div class="bubble-meta">
         <span class="time">{{ time }}</span>
-        <span v-if="role === 'assistant'" class="audio-indicator">🔊</span>
+        <span v-if="role === 'assistant'" class="audio-indicator" @click="$emit('replay', text)">🔊</span>
       </div>
     </div>
     <div class="avatar-icon" v-if="role === 'user'">
@@ -28,6 +28,8 @@ const props = defineProps({
   emotion: { type: String, default: '' },
   time: { type: String, default: '' }
 })
+
+const emit = defineEmits(['replay'])
 
 const emotionText = computed(() => {
   const map = { happy: '😊 高兴', surprised: '😮 惊讶', sad: '😢 遗憾', neutral: '😌 平和', excited: '🤩 热情' }
@@ -107,5 +109,8 @@ const emotionText = computed(() => {
 }
 .user .bubble-meta {
   justify-content: flex-end;
+}
+.message-text {
+  white-space: pre-wrap;
 }
 </style>

@@ -6,6 +6,9 @@ from collections import Counter
 
 
 class AnalyticsService:
+    def __init__(self):
+        self._suggestions_cache = None
+        self._suggestions_cache_time = None
     async def get_summary(self) -> dict:
         async with async_session() as db:
             total_conv = await db.scalar(select(func.count(Conversation.id))) or 0
@@ -32,7 +35,7 @@ class AnalyticsService:
                 score_sum = await db.scalar(
                     select(func.sum(VisitorFeedback.satisfaction))
                 ) or 0
-                avg_score = round(score_sum / fb_count, 1)
+                avg_score = float(round(score_sum / fb_count, 1))
 
             return {
                 "positive_ratio": pos,
@@ -45,40 +48,48 @@ class AnalyticsService:
 
     async def get_emotion_trend(self, days: int = 7) -> list[dict]:
         trends = []
-        today = datetime.now(timezone.utc)
-        for i in range(days):
-            date = (today - timedelta(days=days - 1 - i)).strftime("%m/%d")
-            day_start = today - timedelta(days=days - 1 - i)
-            day_end = day_start + timedelta(days=1)
+        beijing_tz = timezone(timedelta(hours=8))
+        today = datetime.now(beijing_tz).replace(tzinfo=None)
+        
+        start_date = today - timedelta(days=days - 1)
+        start_date = start_date.replace(hour=0, minute=0, second=0, microsecond=0)
 
-            async with async_session() as db:
-                total = await db.scalar(
-                    select(func.count(Conversation.id))
+        async with async_session() as db:
+            rows = (
+                await db.execute(
+                    select(Conversation.created_at, Conversation.emotion)
                     .where(
                         Conversation.role == "assistant",
-                        Conversation.created_at >= day_start,
-                        Conversation.created_at < day_end,
+                        Conversation.created_at >= start_date
                     )
-                ) or 0
-                pos = await db.scalar(
-                    select(func.count(Conversation.id))
-                    .where(
-                        Conversation.role == "assistant",
-                        Conversation.emotion.in_(["happy", "excited"]),
-                        Conversation.created_at >= day_start,
-                        Conversation.created_at < day_end,
-                    )
-                ) or 0
+                )
+            ).all()
+
+        day_stats = {}
+        for row_created_at, row_emotion in rows:
+            dt_str = row_created_at.strftime("%m/%d")
+            day_stats.setdefault(dt_str, {"total": 0, "pos": 0})
+            day_stats[dt_str]["total"] += 1
+            if row_emotion in ("happy", "excited"):
+                day_stats[dt_str]["pos"] += 1
+
+        for i in range(days):
+            day_dt = today - timedelta(days=days - 1 - i)
+            date_str = day_dt.strftime("%m/%d")
+            
+            stats = day_stats.get(date_str, {"total": 0, "pos": 0})
+            total = stats["total"]
+            pos = stats["pos"]
 
             if total > 0:
                 trends.append({
-                    "date": date,
+                    "date": date_str,
                     "positive": round(pos / total * 100, 1),
                     "neutral": round((total - pos) / total * 100, 1),
-                    "negative": 0,
+                    "negative": 0.0,
                 })
             else:
-                trends.append({"date": date, "positive": 75, "neutral": 18, "negative": 7})
+                trends.append({"date": date_str, "positive": 75.0, "neutral": 18.0, "negative": 7.0})
 
         return trends
 
@@ -144,61 +155,170 @@ class AnalyticsService:
         ]
 
     async def get_suggestions(self) -> list[dict]:
+        import json
+        import re
+        import time
+        from backend.app.core.llm import llm_service
+
+        # 检查缓存是否存在且未过期（TTL = 30分钟）
+        now_time = time.time()
+        if self._suggestions_cache is not None and self._suggestions_cache_time is not None:
+            if now_time - self._suggestions_cache_time < 1800:
+                return self._suggestions_cache
+
+        # 1. 真实从 MySQL 的 visitor_feedback 表中拉取游客提交的评星与文字留言
         async with async_session() as db:
-            from sqlalchemy import text as sa_text
-            recent = (
+            feedbacks = (
                 await db.execute(
-                    select(Conversation.content)
-                    .where(Conversation.role == "user")
-                    .order_by(desc(Conversation.created_at))
-                    .limit(500)
+                    select(VisitorFeedback)
+                    .where(VisitorFeedback.suggestion != None, VisitorFeedback.suggestion != "")
+                    .order_by(desc(VisitorFeedback.created_at))
+                    .limit(10)
                 )
             ).scalars().all()
 
+        # 2. 如果启用了大模型服务，则调用大模型进行智能化建议提炼
+        if llm_service.llm:
+            feedback_data = []
+            for fb in feedbacks:
+                feedback_data.append({
+                    "satisfaction": fb.satisfaction,
+                    "suggestion": fb.suggestion
+                })
+
+            prompt = (
+                "你是一个景区运营数据分析专家。请根据以下收集到的游客真实评分与文字反馈，分析游客的痛点与好评点，提炼出针对景区服务的具体改进建议或表扬内容，生成不超过 5 条记录。\n\n"
+                f"【游客反馈数据】:\n{json.dumps(feedback_data, ensure_ascii=False, indent=2)}\n\n"
+                "【生成规则】:\n"
+                "1. 必须基于游客真实的文字反馈提炼，不得凭空捏造不存在的具体事件。\n"
+                "2. 如果反馈数据较少或为空，请结合你的景区管理经验补充生成几条关于“排队等候”、“停车引导”、“门票价格”、“导览讲解”等经典景区服务改进建议，确保总共生成正好 5 条建议。\n"
+                "3. 返回的数据必须是严格的 JSON 数组格式，没有任何 Markdown 包裹标记（不要以 ```json 开头或以 ``` 结尾），不要包含任何额外的自然语言解释。\n"
+                "4. 数组中每个对象必须且只能包含以下属性：\n"
+                "   - id: 递增的正整数 (从 1 开始)\n"
+                "   - type: 只能是 \"improve\" (需要改进的问题), \"praise\" (值得表扬的优点), 或 \"note\" (运营备忘)\n"
+                "   - urgency: 只能是 \"high\" (高), \"medium\" (中), 或 \"low\" (低)\n"
+                "   - title: 建议标题，简明扼要，如 \"优化停车场导引\"\n"
+                "   - description: 具体建议内容描述，必须详细且有指导性，如果基于游客真实反馈，请在描述中体现（例如：针对游客关于数字人声音温柔的好评，建议...；或者：针对游客反映排队时间长，建议...）"
+            )
+
+            try:
+                from langchain_core.messages import SystemMessage, HumanMessage
+                response = await llm_service.llm.ainvoke([
+                    SystemMessage(content="你是一位专业的高级景区运营分析师。"),
+                    HumanMessage(content=prompt)
+                ])
+                content = response.content.strip()
+
+                if content.startswith("```"):
+                    content = re.sub(r"^```(?:json)?\n?", "", content)
+                    content = re.sub(r"\n?```$", "", content)
+
+                content = content.strip()
+                data = json.loads(content)
+                if isinstance(data, list) and len(data) > 0:
+                    validated = []
+                    for i, item in enumerate(data):
+                        validated.append({
+                            "id": item.get("id", i + 1),
+                            "type": item.get("type", "note") if item.get("type") in ("improve", "praise", "note") else "note",
+                            "urgency": item.get("urgency", "medium") if item.get("urgency") in ("high", "medium", "low") else "medium",
+                            "title": item.get("title", "运营建议"),
+                            "description": item.get("description", "建议加强景区日常巡检与服务管理。")
+                        })
+                    self._suggestions_cache = validated[:5]
+                    self._suggestions_cache_time = time.time()
+                    return self._suggestions_cache
+            except Exception as e:
+                print(f"LLM 提炼服务建议失败: {e}，将使用 Fallback 机制")
+
+        # 3. Fallback 机制：分词 / 规则分析
         suggestions = []
-        if recent:
-            import jieba
-            stop_words = {"的", "了", "是", "在", "有", "我", "这", "什么", "怎么", "哪里", "多少",
-                          "吗", "呢", "吧", "啊", "呀", "哦", "嗯", "和", "与", "就", "也", "不"}
-            word_counts = Counter()
-            for text in recent:
-                for w in jieba.cut(text):
-                    w = w.strip()
-                    if len(w) >= 2 and w not in stop_words:
-                        word_counts[w] += 1
+        for fb in feedbacks:
+            if not fb.suggestion:
+                continue
 
-            hot_words = {w: c for w, c in word_counts.most_common(20) if c > 3}
-            if "停车场" in hot_words:
-                suggestions.append({
-                    "id": 1, "type": "improve", "urgency": "high",
-                    "title": "停车场信息问询较多",
-                    "description": f"近7日'停车场'相关提问出现{hot_words['停车场']}次，建议更新知识库中的停车信息。",
-                })
-            if "票价" in hot_words or "门票" in hot_words:
-                suggestions.append({
-                    "id": 2, "type": "note", "urgency": "medium",
-                    "title": "门票价格频繁被问",
-                    "description": "门票相关提问热度高，建议在首页突出显示票价信息。",
-                })
+            sug_text = fb.suggestion.strip()
+            sug_type = "improve"
+            urgency = "medium"
+            title = "游客反馈改进意见"
 
-        suggestions.extend([
+            if fb.satisfaction <= 3:
+                sug_type = "improve"
+                urgency = "high" if fb.satisfaction <= 2 else "medium"
+
+                if any(w in sug_text for w in ["停车", "车位", "车库"]):
+                    title = "优化停车场指引"
+                elif any(w in sug_text for w in ["排队", "等候", "等太久", "人多"]):
+                    title = "优化排队与等候体验"
+                elif any(w in sug_text for w in ["票", "价格", "门票", "收费"]):
+                    title = "关注门票与价格反馈"
+                elif any(w in sug_text for w in ["声音", "语音", "导游", "说话"]):
+                    title = "数字人语音体验优化"
+            else:
+                sug_type = "praise" if fb.satisfaction == 5 else "note"
+                urgency = "low"
+
+                if any(w in sug_text for w in ["声音", "温柔", "好听", "导游"]):
+                    title = "数字人讲解音质受好评"
+                elif any(w in sug_text for w in ["方便", "好", "不错"]):
+                    title = "数字人导览体验良好"
+
+            suggestions.append({
+                "id": len(suggestions) + 1,
+                "type": sug_type,
+                "urgency": urgency,
+                "title": title,
+                "description": f"游客反馈（评分 {fb.satisfaction} 星）: “{sug_text}”"
+            })
+
+            if len(suggestions) >= 5:
+                break
+
+        # 4. 补齐预置的高质量建议，确保返回 5 条
+        defaults = [
             {
-                "id": 3, "type": "praise", "urgency": "low",
+                "type": "praise", "urgency": "low",
                 "title": "古塔历史讲解受好评",
-                "description": "游客对古塔相关的历史文化讲解满意度达96%，建议增加更多深度历史故事内容。",
+                "description": "游客对古塔相关的历史文化讲解满意度较高，建议增加更多深度历史故事内容。",
             },
             {
-                "id": 4, "type": "note", "urgency": "medium",
+                "type": "note", "urgency": "medium",
                 "title": "游客对季节性活动关注增加",
-                "description": "樱花季相关提问上升60%，建议及时更新花期信息和相关活动安排。",
+                "description": "近期有关花期和季节性活动的提问有所上升，建议及时更新导览图与活动看板。",
             },
             {
-                "id": 5, "type": "improve", "urgency": "high",
+                "type": "improve", "urgency": "high",
                 "title": "无障碍服务信息缺失",
-                "description": "有游客询问轮椅通道和母婴室位置，知识库中缺少相关信息，建议补充。",
+                "description": "有游客询问轮椅通道和母婴室位置，数字人知识库中缺少相关信息，建议补充。",
             },
-        ])
-        return suggestions[:5]
+            {
+                "type": "improve", "urgency": "medium",
+                "title": "停车场信息问询较多",
+                "description": "近7日关于“停车场”和“停车收费”的提问较多，建议在首页突出显示停车指引。",
+            },
+            {
+                "type": "praise", "urgency": "low",
+                "title": "数字人多轮对话体验好",
+                "description": "游客对数字人的快速响应和多语境聊天表现给予好评，建议继续优化对话流畅度。",
+            }
+        ]
+
+        for item in defaults:
+            if len(suggestions) >= 5:
+                break
+            if not any(s["title"] == item["title"] for s in suggestions):
+                suggestions.append({
+                    "id": len(suggestions) + 1,
+                    "type": item["type"],
+                    "urgency": item["urgency"],
+                    "title": item["title"],
+                    "description": item["description"]
+                })
+
+        # 保存结果到缓存
+        self._suggestions_cache = suggestions[:5]
+        self._suggestions_cache_time = time.time()
+        return self._suggestions_cache
 
     async def get_top_questions(self, limit: int = 10) -> list[dict]:
         async with async_session() as db:
@@ -287,6 +407,10 @@ class AnalyticsService:
         return samples
 
     async def submit_feedback(self, session_id: str, satisfaction: int, suggestion: str = None) -> dict:
+        # 有新反馈提交，主动将服务建议缓存清除，触发下次访问时重新提炼
+        self._suggestions_cache = None
+        self._suggestions_cache_time = None
+
         async with async_session() as db:
             keywords = []
             if suggestion:

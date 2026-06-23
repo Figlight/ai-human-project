@@ -5,9 +5,11 @@ from backend.app.api.digital_human import router as digital_human_router
 from backend.app.api.analytics import router as analytics_router
 from backend.app.api.attractions import router as attractions_router
 from backend.app.api.geocode import router as geocode_router
+from backend.app.api.auth import router as auth_router
 
 api_router = APIRouter()
 
+api_router.include_router(auth_router, prefix="/auth", tags=["认证"])
 api_router.include_router(chat_router, prefix="/chat", tags=["对话"])
 api_router.include_router(knowledge_router, prefix="/knowledge", tags=["知识库"])
 api_router.include_router(digital_human_router, prefix="/digital-human", tags=["数字人"])
